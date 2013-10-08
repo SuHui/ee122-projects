@@ -11,8 +11,8 @@ _ENABLE_GUI = "--gui" in sys.argv
 _DISABLE_CONSOLE_LOG = True
 
 
-from hub import Hub as switch
-#from rip_router import RIPRouter as switch
+#from hub import Hub as switch
+from rip_router import RIPRouter as switch
 
 import sim.core
 import scenarios
