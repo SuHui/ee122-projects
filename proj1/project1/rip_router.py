@@ -7,12 +7,13 @@ Create your RIP router in this file.
 '''
 class RIPRouter (Entity):
     def __init__(self):
-        # we need to create a routing table containing what we believe to be all of the shortest distances
-        # and corresponding next hops. I'm going with a dict representation for now on. first dict key is the dest
-        # and second key is the nevxt hop.
+        # maps all possible destinations -> dicts where the keys are next_hops and values are distances using that hop.
         self.routing_table = defaultdict(lambda: defaultdict(lambda:float('inf')))
+        # maps ports -> corresponding entities
         self.ports = {}
+        # maps desired destinations -> next hop port
         self.paths = {}
+        # maps desired destinations - > minimum distance
         self.distances = defaultdict(lambda : float('inf'))
         self.distances[self] = 0
 
