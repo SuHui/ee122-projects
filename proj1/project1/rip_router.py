@@ -57,7 +57,10 @@ class RIPRouter (Entity):
         if dist < self.distances[src]:
             self.distances[src] = dist
             self.paths[src] = port
+            # true means our internal distances changed, so we need to send an update.
             return True
+        elif dist == self.distances[src]:
+            self.paths[src] = min(port, self.paths[src])
         return False
 
     def send_ru(self):
