@@ -30,9 +30,9 @@ class RIPRouter (Entity):
     def handle_dp(self, packet, port):
         print self, " is handling a discovery packet from", packet.src
         if packet.is_link_up:
-            self.routing_table[packet.src][port] = packet.latency
+            self.routing_table[packet.src][port] = 1
             self.ports[port] = packet.src
-            update = self.updatepaths(packet.src, packet.latency, port)
+            update = self.updatepaths(packet.src, 1, port)
             if update:
                 self.send_ru()
         else:
