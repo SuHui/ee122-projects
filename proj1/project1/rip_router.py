@@ -40,6 +40,7 @@ class RIPRouter (Entity):
             for key in self.routing_table.keys():
                 self.routing_table[key][port] = float("inf")
             del self.ports[port]
+            self.recompute(*self.routing_table.keys())
 
     # after receiving a routing update packet
     def handle_ru(self, packet, port):
@@ -47,20 +48,26 @@ class RIPRouter (Entity):
         src, update = packet.src, False
         for (key, value) in packet.paths.iteritems():
             current_dist = self.routing_table[src][port]
-            if self.routing_table[key][port] == float('inf') or value+current_dist < self.routing_table[key][port]:
+            if value+current_dist != self.routing_table[key][port]:
                 self.routing_table[key][port] = value + current_dist
                 update = self.updatepaths(key, value + current_dist, port) or update
         if update:
             self.send_ru()
 
-    def updatepaths(self, src, dist, port):
-        if dist < self.distances[src]:
-            self.distances[src] = dist
-            self.paths[src] = port
+    def updatepaths(self, dest, dist, port):
+        if dist < self.distances[dest]:
+            self.distances[dest] = dist
+            self.paths[dest] = port
             # true means our internal distances changed, so we need to send an update.
             return True
-        elif dist == self.distances[src]:
-            self.paths[src] = min(port, self.paths[src])
+        # return false because our distance doesn't change
+        elif dist == self.distances[dest]:
+            self.paths[dest] = min(port, self.paths[dest])
+        # if we are getting a routing update from the port we currently think is the best port to take from a path, 
+        # we might need to change our best distances
+        elif self.paths[dest] == port:
+            self.recompute(dest)
+            return True
         return False
 
     def send_ru(self):
@@ -71,3 +78,12 @@ class RIPRouter (Entity):
                 if entity not in [self, dest]:
                     update.add_destination(entity, distance)
             self.send(port=port,packet=update)
+
+    def recompute(self, *args):
+        for dest in args:
+            options = self.routing_table[dest]
+            best = min([(port, d) for (port, d) in options.iteritems()], key = lambda x: x[1])
+            self.distances[dest] = best[1]
+            self.paths[dest] = best[0]
+
+        self.send_ru()
