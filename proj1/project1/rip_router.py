@@ -13,7 +13,7 @@ class RIPRouter (Entity):
         self.ports = {}
         # maps desired destinations -> next hop port
         self.paths = {}
-        # maps desired destinations - > minimum distance
+        # maps desired destinations - > minimum distance. this is the same as a routingupdate.paths
         self.distances = defaultdict(lambda : float('inf'))
         self.distances[self] = 0
 
@@ -32,25 +32,41 @@ class RIPRouter (Entity):
         print self, " is handling a discovery packet from", packet.src
         if packet.is_link_up:
             self.routing_table[packet.src][port] = 1
+            self.paths[packet.src] = port
             self.ports[port] = packet.src
             update = self.updatepaths(packet.src, 1, port)
             if update:
                 self.send_ru()
         else:
             for key in self.routing_table.keys():
+                print "setting the table at", key, port, "to inf"
                 self.routing_table[key][port] = float("inf")
+                print "at", key, "row looks like", [(k,v) for (k,v) in self.routing_table[key].items()]
+
             del self.ports[port]
             self.recompute(*self.routing_table.keys())
 
     # after receiving a routing update packet
     def handle_ru(self, packet, port):
         print self, " is handling a routingupdate from", packet.src
-        src, update = packet.src, False
-        for (key, value) in packet.paths.iteritems():
-            current_dist = self.routing_table[src][port]
-            if value+current_dist != self.routing_table[key][port]:
-                self.routing_table[key][port] = value + current_dist
-                update = self.updatepaths(key, value + current_dist, port) or update
+        update = False
+        update_items = packet.paths.keys()
+        print self, "handling an update...", [(k,v) for (k,v) in packet.paths.items()]
+
+        for dest in update_items:
+            self.routing_table[dest][port] = packet.paths[dest] + 1
+            update = self.updatepaths(dest, self.routing_table[dest][port], port) or update
+        for dest, row in self.routing_table.iteritems():
+            # -----------------------------------------------------------------------
+            # -----------------------------------------------------------------------# -----------------------------------------------------------------------
+            # -----------------------------------------------------------------------
+            if dest not in update_items: # and dest != packet.src: #<------------------------ THIS IS AN ERROR WHETHER IT IS COMMENTED OUT OR LEFT IN. ADDRESS THIS.
+            # -----------------------------------------------------------------------
+            # -----------------------------------------------------------------------# -----------------------------------------------------------------------
+            # -----------------------------------------------------------------------
+                row[port] = float('inf')
+            update = self.updatepaths(dest, self.routing_table[dest][port], port) or update
+
         if update:
             self.send_ru()
 
@@ -67,15 +83,14 @@ class RIPRouter (Entity):
         # we might need to change our best distances
         elif self.paths[dest] == port:
             self.recompute(dest)
-            return True
         return False
 
     def send_ru(self):
         for (port,dest) in self.ports.iteritems():
-            print self, "is sending a router update packet to", port
             update = RoutingUpdate()
             for entity, distance in self.distances.iteritems():
-                if entity not in [self, dest]:
+                # do not broadcast paths to ourself, our destination, the next hop for a given destination, or if we have no such path.
+                if entity not in [self, dest, self.ports[self.paths[dest]]] or (distance == float('inf')):
                     update.add_destination(entity, distance)
             self.send(port=port,packet=update)
 
@@ -85,5 +100,6 @@ class RIPRouter (Entity):
             best = min([(port, d) for (port, d) in options.iteritems()], key = lambda x: x[1])
             self.distances[dest] = best[1]
             self.paths[dest] = best[0]
+
 
         self.send_ru()
