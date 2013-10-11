@@ -29,7 +29,6 @@ class RIPRouter (Entity):
     
     # after receiving a discovery packet
     def handle_dp(self, packet, port):
-        print self, " is handling a discovery packet from", packet.src
         if packet.is_link_up:
             self.routing_table[packet.src][port] = 1
             self.paths[packet.src] = port
@@ -39,31 +38,24 @@ class RIPRouter (Entity):
                 self.send_ru()
         else:
             for key in self.routing_table.keys():
-                print "setting the table at", key, port, "to inf"
                 self.routing_table[key][port] = float("inf")
-                print "at", key, "row looks like", [(k,v) for (k,v) in self.routing_table[key].items()]
 
             del self.ports[port]
             self.recompute(*self.routing_table.keys())
 
     # after receiving a routing update packet
     def handle_ru(self, packet, port):
-        print self, " is handling a routingupdate from", packet.src
         update = False
         update_items = packet.paths.keys()
-        print self, "handling an update...", [(k,v) for (k,v) in packet.paths.items()]
 
         for dest in update_items:
             self.routing_table[dest][port] = packet.paths[dest] + 1
+            if dest not in self.paths.keys():
+                self.paths[dest] = port
             update = self.updatepaths(dest, self.routing_table[dest][port], port) or update
         for dest, row in self.routing_table.iteritems():
-            # -----------------------------------------------------------------------
-            # -----------------------------------------------------------------------# -----------------------------------------------------------------------
-            # -----------------------------------------------------------------------
-            if dest not in update_items: # and dest != packet.src: #<------------------------ THIS IS AN ERROR WHETHER IT IS COMMENTED OUT OR LEFT IN. ADDRESS THIS.
-            # -----------------------------------------------------------------------
-            # -----------------------------------------------------------------------# -----------------------------------------------------------------------
-            # -----------------------------------------------------------------------
+            
+            if dest not in update_items and dest != packet.src: 
                 row[port] = float('inf')
             update = self.updatepaths(dest, self.routing_table[dest][port], port) or update
 
@@ -87,12 +79,22 @@ class RIPRouter (Entity):
 
     def send_ru(self):
         for (port,dest) in self.ports.iteritems():
+            
+            # avoid sending routing updates to basic hosts
+            if isinstance(dest, BasicHost):
+                continue
+
             update = RoutingUpdate()
             for entity, distance in self.distances.iteritems():
                 # do not broadcast paths to ourself, our destination, the next hop for a given destination, or if we have no such path.
-                if entity not in [self, dest, self.ports[self.paths[dest]]] or (distance == float('inf')):
+                legalaccess = entity in self.paths.keys() and self.paths[entity] in self.ports.keys()
+                is_not_next_hop = (dest is not self.ports[self.paths[entity]]) if legalaccess else True
+                if (entity not in [self, dest] and is_not_next_hop) or distance==float('inf'): 
                     update.add_destination(entity, distance)
-            self.send(port=port,packet=update)
+
+
+            if update.all_dests():
+                self.send(port=port,packet=update)
 
     def recompute(self, *args):
         for dest in args:
