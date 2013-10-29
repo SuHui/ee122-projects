@@ -15,46 +15,56 @@ class Sender(BasicSender.BasicSender):
         self.timeout = .500
         self.window_size = 5
         self.s_window = {}
-        self.window = (0, self.window_size)
+        self.window = (0, self.window_size - 1)
+        self.end = float('inf')
 
     # Main sending loop.
     def start(self):
         seqno = 0
-        data = self.infile.read(self.payload_size)
         while True:
             #while next packet is within our sending window
-            while seqno <= self.window[1]: 
-                # our packet has less data than our payload size, so it's the last one!
-                if len(data) < self.payload_size:
-                    message = self.make_packet("end", seqno, data)
-                if seqno == 0:
-                    message = self.make_packet("start", seqno , data)
-                else:
-                    message = self.make_packet("data", seqno, data)
+            while seqno <= self.window[1]:
+                if seqno > self.end:
+                    break
+
+                if seqno in self.s_window.keys():
+                    message = self.s_window[seqno]
+                else: 
+                    data = self.infile.read(self.payload_size)
+                    # our packet has less data than our payload size, so it's the last one!
+                    if len(data) < self.payload_size:
+                        self.end = seqno
+                        print "sent end packet at", seqno
+                        message = self.make_packet("end", seqno, data)
+                    if seqno == 0:
+                        message = self.make_packet("start", seqno , data)
+                    else:
+                        message = self.make_packet("data", seqno, data)
 
                 #send
                 self.send(message)
-                self.s_window[seqno] = (None, message)
+                self.s_window[seqno] = message
+                seqno += 1
             
             ack = self.receive(self.timeout)
             print "ack received", ack
 
             # if not a timeout...
             if ack != None:
+                if not Checksum.validate_checksum(ack):
+                    continue
                 ack_seqno = int(ack.split('|')[1])
 
-                if ack_seqno == seqno + 1:
-                    if self.handle_new_ack(ack):
-
+                if ack_seqno > self.window[0]:
+                    self.handle_new_ack(ack)
                         # this is an end packet
-                        if len(data) < self.payload_size:
-                            break
-                        data = self.infile.read(self.payload_size)
-                        seqno = seqno + 1
-                elif ack_seqno == seqno:
+                    if ack_seqno > self.end:
+                        break
+                else:
                     self.handle_dup_ack(ack)
             else:
                 print "TIMEOUT!!!", seqno
+                seqno = self.window[0]
                 continue
                 
 
@@ -68,9 +78,10 @@ class Sender(BasicSender.BasicSender):
 
     def handle_new_ack(self, ack):
         ack_seqno = int(ack.split('|')[1])
-        self.s_window[ack_seqno-1] = (True, self.s_window[ack_seqno-1][1])
-        self.window = (ack_seqno, ack_seqno+self.window_size)
-        return Checksum.validate_checksum(ack)
+        for key in self.s_window.keys():
+            if key < ack_seqno:
+                del self.s_window[key]
+        self.window = (ack_seqno, ack_seqno+self.window_size) if ack_seqno != (self.end + 1) else (ack_seqno, ack_seqno)
         
 
     def handle_dup_ack(self, ack):
@@ -78,7 +89,8 @@ class Sender(BasicSender.BasicSender):
         if not Checksum.validate_checksum(ack):
             pass
         msg_type, seqno, data, checksum = self.split_packet(ack)
-        self.send(self.s_window[seqno][1])
+        if int(seqno) > self.window[0]:
+            self.send(self.s_window[seqno])
 
     def log(self, msg):
         if self.debug:
