@@ -10,19 +10,54 @@ This is a skeleton sender class. Create a fantastic transport protocol here.
 class Sender(BasicSender.BasicSender):
     def __init__(self, dest, port, filename, debug=False):
         super(Sender, self).__init__(dest, port, filename, debug)
+        self.payload_size = 1444
 
     # Main sending loop.
     def start(self):
-        raise NotImplementedError
+        print "starting"
+        print self.payload_size
+        print self.dest
+        print self.dport
+        seqno = 0
+        while True:
+            data = self.infile.read(self.payload_size)
+            # our packet has less data than our payload size, so it's the last one!
+            if len(data) < self.payload_size:
+                message = self.make_packet("end", seqno, data)
+                break
+            if seqno == 0:
+                message = self.make_packet("start", seqno , data)
+            else:
+                message = self.make_packet("data", seqno, data)
+
+            #send
+            self.send(message)
+
+            seqno = seqno + 1
+            #wait
+
+
+
+        # have some timeout check
+
+        # getting the checksum, and appending it to the message.
+        
 
     def handle_timeout(self):
         pass
 
     def handle_new_ack(self, ack):
-        pass
+        # invalid checksum
+        if not Checksum.validate_checksum(ack):
+            pass
+        msg_type, seqno, data, checksum = self.split_packet(ack)
+        
 
     def handle_dup_ack(self, ack):
-        pass
+        # invalid checksum
+        if not Checksum.validate_checksum(ack):
+            pass
+        msg_type, seqno, data, checksum = self.split_packet(ack)
 
     def log(self, msg):
         if self.debug:
