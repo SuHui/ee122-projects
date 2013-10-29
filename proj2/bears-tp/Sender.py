@@ -13,26 +13,29 @@ class Sender(BasicSender.BasicSender):
         self.payload_size = 1444
         # 500 milliseconds
         self.timeout = .500
-        self.windowsize = 5
-        self.swindow = {}
+        self.window_size = 5
+        self.s_window = {}
+        self.window = (0, self.window_size)
 
     # Main sending loop.
     def start(self):
         seqno = 0
         data = self.infile.read(self.payload_size)
-        self.window_start = 0
         while True:
-            
-            # our packet has less data than our payload size, so it's the last one!
-            if len(data) < self.payload_size:
-                message = self.make_packet("end", seqno, data)
-            if seqno == 0:
-                message = self.make_packet("start", seqno , data)
-            else:
-                message = self.make_packet("data", seqno, data)
+            #while next packet is within our sending window
+            while seqno <= self.window[1]: 
+                # our packet has less data than our payload size, so it's the last one!
+                if len(data) < self.payload_size:
+                    message = self.make_packet("end", seqno, data)
+                if seqno == 0:
+                    message = self.make_packet("start", seqno , data)
+                else:
+                    message = self.make_packet("data", seqno, data)
 
-            #send
-            self.send(message)
+                #send
+                self.send(message)
+                self.s_window[seqno] = (None, message)
+            
             ack = self.receive(self.timeout)
             print "ack received", ack
 
@@ -64,7 +67,9 @@ class Sender(BasicSender.BasicSender):
         pass
 
     def handle_new_ack(self, ack):
-        # invalid checksum
+        ack_seqno = int(ack.split('|')[1])
+        self.s_window[ack_seqno-1] = (True, self.s_window[ack_seqno-1][1])
+        self.window = (ack_seqno, ack_seqno+self.window_size)
         return Checksum.validate_checksum(ack)
         
 
@@ -73,6 +78,7 @@ class Sender(BasicSender.BasicSender):
         if not Checksum.validate_checksum(ack):
             pass
         msg_type, seqno, data, checksum = self.split_packet(ack)
+        self.send(self.s_window[seqno][1])
 
     def log(self, msg):
         if self.debug:
