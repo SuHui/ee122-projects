@@ -34,7 +34,7 @@ class Sender(BasicSender.BasicSender):
                     # our packet has less data than our payload size, so it's the last one!
                     if len(data) < self.payload_size:
                         self.end = seqno
-                        print "sent end packet at", seqno
+              #          print "sent end packet at", seqno
                         message = self.make_packet("end", seqno, data)
                     if seqno == 0:
                         message = self.make_packet("start", seqno , data)
@@ -47,7 +47,7 @@ class Sender(BasicSender.BasicSender):
                 seqno += 1
             
             ack = self.receive(self.timeout)
-            print "ack received", ack
+            #print "ack received", ack
 
             # if not a timeout...
             if ack != None:
@@ -63,7 +63,7 @@ class Sender(BasicSender.BasicSender):
                 else:
                     self.handle_dup_ack(ack)
             else:
-                print "TIMEOUT!!!", seqno
+             #   print "TIMEOUT!!!", seqno
                 seqno = self.window[0]
                 continue
                 
